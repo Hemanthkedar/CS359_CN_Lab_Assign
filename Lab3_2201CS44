@@ -1,0 +1,85 @@
+from scapy.all import IP, ICMP, sr1, Raw
+import time
+
+def ping(destination, count=4, ttl=64, packet_size=64, timeout=1):
+    """
+    Ping a specified destination IP with given parameters.
+    
+    Parameters:
+    destination (str): The IP address to ping.
+    count (int): Number of packets to send.
+    ttl (int): Time-To-Live for the packets.
+    packet_size (int): Size of the ICMP packet.
+    timeout (int): Timeout in seconds for each ping.
+    """
+    
+    print(f"Pinging {destination} with {count} packets:")
+
+    # Validate input parameters
+    if count <= 0:
+        raise ValueError("Count must be a positive integer.")
+    if not (0 < ttl <= 255):
+        raise ValueError("TTL must be between 1 and 255.")
+    if packet_size <= 0:
+        raise ValueError("Packet size must be a positive integer.")
+    if timeout <= 0:
+        raise ValueError("Timeout must be a positive integer.")
+
+    sent_packets = 0
+    received_packets = 0
+    rtts = []
+
+    for i in range(count):
+        # Create an ICMP packet with specified TTL and packet size
+        icmp_packet = IP(dst=destination, ttl=ttl)/ICMP()/Raw(load='X'*packet_size)
+
+        # Record the sent time
+        sent_packets += 1
+        send_time = time.time()
+
+        # Send the packet and wait for a response
+        try:
+            response = sr1(icmp_packet, timeout=timeout, verbose=0)
+
+            if response is None:
+                print(f"Request {i + 1} timed out.")
+            elif response.haslayer(ICMP) and response.getlayer(ICMP).type == 0:
+                received_packets += 1
+                rtt = (time.time() - send_time) * 1000  # Round trip time in milliseconds
+                response_ttl = response.ttl  # Extract TTL from the response packet
+                rtts.append(rtt)
+                print(f"Request {i + 1} received. RTT = {rtt:.2f} ms, TTL = {response_ttl}")
+            else:
+                print(f"Request {i + 1} failed.")
+        except Exception as e:
+            print(f"An error occurred: {e}")
+
+        # Wait one second before the next request
+        time.sleep(1)
+
+    # Calculate statistics
+    packet_loss = ((sent_packets - received_packets) / sent_packets) * 100
+    if rtts:
+        min_rtt = min(rtts)
+        max_rtt = max(rtts)
+        avg_rtt = sum(rtts) / len(rtts)
+    else:
+        min_rtt = max_rtt = avg_rtt = 0
+
+    # Print summary
+    print(f"\n--- {destination} ping statistics ---")
+    print(f"{sent_packets} packets transmitted, {received_packets} packets received, {packet_loss:.2f}% packet loss")
+    print(f"rtt min/avg/max = {min_rtt:.2f}/{avg_rtt:.2f}/{max_rtt:.2f} ms")
+
+if __name__ == "__main__":
+    # Example usage of the ping function
+    try:
+        test_ips = ["8.8.8.8", "1.1.1.1", "8.8.4.4"]
+        for ip in test_ips:
+            ping(ip, count=4, ttl=64, packet_size=64, timeout=1)
+            print("-" * 40)
+    except ValueError as ve:
+        print(f"ValueError: {ve}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
